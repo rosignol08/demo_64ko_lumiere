@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <vector>
-
+#include <iostream>
 #define RLIGHTS_IMPLEMENTATION
 #if defined(_WIN32) || defined(_WIN64)
 //#include "include/shaders/rlights.h"
@@ -44,7 +44,7 @@ typedef struct {
 
 // Structure pour les matériaux
 typedef struct {
-    int type;         // 0 = diffus, 1 = métallique, 2 = verre, 3 = emissif 4 = mirroir 5 = zone_emition
+    int type;         // 0 = diffus, 1 = métallique, 2 = verre, 3 = emissif 4 = mirroir 5 = zone_emition 6 = eau
     float roughness;  // 0.0 - 1.0
     float ior;        // indice de réfraction (verre)
     float padding;    // pour alignement
@@ -54,8 +54,8 @@ typedef struct {
 
 // Données des sphères
 Sphere spheres[MAX_SPHERES] = {
-    {{0.0f, 0.0f, 0.0f}, 1.0f},     // Sphère centrale
-    {{1.5f, 0.0f, 1.5f}, 0.5f}      // Petite sphère
+    {{0.0f, 10.0f, 0.0f}, 1.0f}     // Sphère centrale (commence à y=10)
+    //{{1.5f, 0.0f, 1.5f}, 0.5f},      // Petite sphère
     //{{-2.5f, 0.0f, 0.0f}, 1.0f},    // Sphère à gauche
     //{{2.5f, 0.0f, 0.0f}, 1.0f},     // Sphère à droite
     //{{0.0f, -1001.0f, 0.0f}, 1000.0f}, // Sol (grosse sphère en dessous)
@@ -73,8 +73,8 @@ Sphere spheres[MAX_SPHERES] = {
 //float padding2; // Padding supplémentaire
 
 Material2 materials[MAX_SPHERES] = {
-    {1, 0.0f, 1.0f, 0.0f, {1.0f, 1.0f, 1.0f}, 0.0f},    // Balle miroir
-    {3, 0.0f, 1.0f, 0.0f, {0.9f, 0.9f, 0.0f}, 0.0f}     // Jaune diffus
+    {3, 0.0f, 1.0f, 0.0f, {1.0f, 0.50f, 0.0f}, 0.0f}    // Balle miroir
+    //{3, 0.0f, 1.0f, 0.0f, {0.9f, 0.9f, 0.0f}, 0.0f}     // Jaune diffus
     //{1, 0.1f, 1.0f, 0.0f, {0.8f, 0.8f, 0.9f}, 0.0f},    // Métal bleuté
     //{2, 0.0f, 1.5f, 0.0f, {0.9f, 0.9f, 0.9f}, 0.0f},    // Verre
     //{0, 0.5f, 1.0f, 0.0f, {0.8f, 0.8f, 0.8f}, 0.0f},    // Sol gris diffus
@@ -86,7 +86,7 @@ Material2 materials[MAX_SPHERES] = {
 //les murs :
 //un grand mur d'eau donc mirroir
 Block blocks[MAX_BLOCKS] = {
-    {{0.0f, -1.0f, 0.0f}, {20.0f, 0.1f, 20.0f}},  // Sol
+    {{0.0f, -1.0f, 0.0f}, {200.0f, 0.1f, 200.0f}}  // Sol
     //{{0.0f, 10.0f, 0.0f}, {20.0f, 0.1f, 20.0f}},  // Plafond
     //{{-10.0f, 0.0f, 0.0f}, {0.1f, 20.0f, 20.0f}}, // Mur gauche
     //{{10.0f, 0.0f, 0.0f}, {0.1f, 20.0f, 20.0f}},  // Mur droit
@@ -95,7 +95,7 @@ Block blocks[MAX_BLOCKS] = {
 };
 
 Material2 materials_block[MAX_BLOCKS] = {
-    {1, 0.80f, 1.0f, 0.0f, {0.2f, 0.2f, 0.225f}, 0.0f}, // Mur gauche gris
+    {6, 0.80f, 1.0f, 0.0f, {0.2f, 0.2f, 0.225f}, 0.0f} // Mur gauche gris
     //{1, 0.80f, 1.0f, 0.0f, {0.2f, 0.2f, 0.225f}, 0.0f}, // Mur droit gris
     //{1, 0.80f, 1.0f, 0.0f, {0.2f, 0.2f, 0.225f}, 0.0f}, // Mur arrière gris
     //{1, 0.80f, 1.0f, 0.0f, {0.2f, 0.2f, 0.225f}, 0.0f}, // Mur avant gris
@@ -105,24 +105,32 @@ Material2 materials_block[MAX_BLOCKS] = {
 
 
 // Position de la lumière
-Vector3 lightPos = {5.0f, 10.0f, -2.0f};
+Vector3 lightPos = {0.f,1.f,0.f};
 // Couleur de la lumière
-Vector3 lightColor = {1.0f, 0.9f, 0.8f}; // Lumière légèrement chaude
+Vector3 lightColor = {1.0f, 0.50f, 0.0f};// Lumière légèrement chaude {1.0f, 0.9f, 0.8f};
 // Intensité de la lumière
-float lightIntensity = 5.0f;
+float lightIntensity = -0.20f;
 
 // Variables pour le faisceau lumineux
 Vector3 beamDirection = {-0.5f, -1.0f, 0.5f}; // Direction du faisceau
-Vector3 beamPosition = {-1.0f, 0.0f, 0.0f};
+Vector3 beamPosition = {-1.0f, 10.0f, 0.0f};
 Vector3 beamColor = {1.0f, 0.0f, 0.0f};
 float beamAngle = 0.0f;      // Angle du cône (en radians)
 float beamIntensity = 100.0f; // Intensité du faisceau
 bool enableBeam = true;      // Activer/désactiver le faisceau
 
+// Variables pour les vagues circulaires
+Vector3 waveCenter = {0.0f, -1.0f, 0.0f}; // Centre des ondulations (sur la surface de l'eau)
+bool enableWaves = false;     // Activer/désactiver les vagues
+float waveDuration = 5.0f;   // Durée des vagues (en secondes)
+float waveAmplitude = 0.5f; // Amplitude des vagues
+float waveStartTime = 0.0f;  // Moment où les vagues ont commencé
+float waveDecayRate = 0.9f;  // Taux de dissipation (90% = 10% de réduction par seconde)
+
 int main(void) {
     // Initialisation
-    const int screenWidth = 400;
-    const int screenHeight = 350;
+    const int screenWidth = 1280;
+    const int screenHeight = 720;
     
     SetConfigFlags(FLAG_MSAA_4X_HINT); // Enable Multi Sampling Anti Aliasing 4x (if available)
     InitWindow(screenWidth, screenHeight, "Raytracer avancé - GLSL");
@@ -167,6 +175,14 @@ int main(void) {
     int beamAngleLoc = GetShaderLocation(shader, "beamAngle");
     int beamIntensityLoc = GetShaderLocation(shader, "beamIntensity");
     int enableBeamLoc = GetShaderLocation(shader, "enableBeam");
+    
+    // Emplacements pour les vagues circulaires
+    int waveCenterLoc = GetShaderLocation(shader, "waveCenter");
+    int enableWavesLoc = GetShaderLocation(shader, "enableWaves");
+    int waveDurationLoc = GetShaderLocation(shader, "waveDuration");
+    int waveAmplitudeLoc = GetShaderLocation(shader, "waveAmplitude");
+    int waveStartTimeLoc = GetShaderLocation(shader, "waveStartTime");
+    int waveDecayRateLoc = GetShaderLocation(shader, "waveDecayRate");
     
     //pareil pour les blocs de murs
     int blocksLoc = GetShaderLocation(shader, "blocks");
@@ -235,17 +251,17 @@ int main(void) {
         camera.position.z = distance_cam * cos(radAngleX) * cos(radAngleY);
         
         // Mouvement de la lumière sur un chemin circulaire
-        lightPos.x = 5.0f * cosf(runTime * 0.5f);
-        lightPos.y = 5.0f + 2.0f * sinf(runTime * 0.3f);
-        lightPos.z = 3.0f * sinf(runTime * 0.7f);
+        //lightPos.x = 5.0f * cosf(runTime * 0.5f);
+        //lightPos.y = 5.0f + 2.0f * sinf(runTime * 0.3f);
+        //lightPos.z = 3.0f * sinf(runTime * 0.7f);
         
         // Contrôles optionnels pour ajuster manuellement la lumière
         if (IsKeyDown(KEY_U)) lightPos.y += 0.2f;
         if (IsKeyDown(KEY_J)) lightPos.y -= 0.2f;
         if (IsKeyDown(KEY_H)) lightPos.x -= 0.2f;
         if (IsKeyDown(KEY_K)) lightPos.x += 0.2f;
-        if (IsKeyDown(KEY_Y)) lightIntensity -= 0.2f;
-        if (IsKeyDown(KEY_I)) lightIntensity += 0.2f;
+        if (IsKeyDown(KEY_Y)) lightIntensity -= 1.0f * deltaTime;
+        if (IsKeyDown(KEY_I)) lightIntensity += 1.0f * deltaTime;
         
         // Contrôles pour le faisceau lumineux
         if (IsKeyPressed(KEY_B)) enableBeam = !enableBeam;  // Activer/désactiver le faisceau
@@ -268,31 +284,59 @@ int main(void) {
         if (beamAngle < 0.1f) beamAngle = 0.1f;
         if (beamAngle > 1.5f) beamAngle = 1.5f;
         if (beamIntensity < 0.0f) beamIntensity = 0.0f;
-        // Variable pour suivre si la touche R est pressée
-        static bool isColorCycling = false;
-
-        // Vérifier si la touche R est pressée
+        
+        // Contrôles pour les vagues circulaires
+        if (IsKeyPressed(KEY_V)) {
+            enableWaves = !enableWaves;
+            if (enableWaves) {
+                waveStartTime = runTime; // Redémarrer les vagues au moment actuel
+            }
+        }
+        
+        // Contrôles pour déplacer le centre des ondulations
+        if (IsKeyDown(KEY_LEFT_CONTROL)) {
+            if (IsKeyDown(KEY_W)) waveCenter.z -= 0.1f;
+            if (IsKeyDown(KEY_S)) waveCenter.z += 0.1f;
+            if (IsKeyDown(KEY_A)) waveCenter.x -= 0.1f;
+            if (IsKeyDown(KEY_D)) waveCenter.x += 0.1f;
+        }
+        
+        // Contrôles pour ajuster l'amplitude des vagues
+        if (IsKeyDown(KEY_LEFT_ALT)) {
+            if (IsKeyDown(KEY_UP)) waveAmplitude += 0.01f;
+            if (IsKeyDown(KEY_DOWN)) waveAmplitude -= 0.01f;
+            if (waveAmplitude < 0.0f) waveAmplitude = 0.0f;
+            if (waveAmplitude > 1.0f) waveAmplitude = 1.0f;
+        }
+        
+        // Contrôles pour ajuster la durée des vagues
+        if (IsKeyDown(KEY_LEFT_ALT)) {
+            if (IsKeyDown(KEY_RIGHT)) waveDuration += 0.2f;
+            if (IsKeyDown(KEY_LEFT)) waveDuration -= 0.2f;
+            if (waveDuration < 1.0f) waveDuration = 1.0f;
+            if (waveDuration > 20.0f) waveDuration = 20.0f;
+        }
+        
+        // Contrôles pour ajuster le taux de dissipation des vagues
+        if (IsKeyDown(KEY_RIGHT_ALT)) {
+            if (IsKeyDown(KEY_UP)) waveDecayRate += 0.01f;    // Moins de dissipation
+            if (IsKeyDown(KEY_DOWN)) waveDecayRate -= 0.01f;  // Plus de dissipation
+            if (waveDecayRate < 0.5f) waveDecayRate = 0.5f;   // Minimum 50% (dissipation rapide)
+            if (waveDecayRate > 0.99f) waveDecayRate = 0.99f; // Maximum 99% (quasi-persistence)
+        }
+        
+        // Redémarrer les vagues avec la touche R
         if (IsKeyPressed(KEY_R)) {
-            isColorCycling = !isColorCycling;  // Activer/désactiver le cycle de couleurs
+            waveStartTime = runTime;
         }
-
-        // Si le cycle de couleurs est actif, modifier les couleurs
-        if (isColorCycling) {
-            // Cycle de couleurs pour la première sphère (miroir)
-            //materials[0].albedo.x = 0.5f + 0.5f * sinf(runTime * 1.1f);          // Rouge
-            //materials[0].albedo.y = 0.5f + 0.5f * sinf(runTime * 0.7f + 2.0f);   // Vert
-            //materials[0].albedo.z = 0.5f + 0.5f * sinf(runTime * 0.9f + 4.0f);   // Bleu
-            
-            // Cycle de couleurs pour la sphère émissive (index 7)
-            materials[1].albedo.x = 0.5f + 0.5f * sinf(runTime * 0.5f + 1.0f);   // Rouge
-            materials[1].albedo.y = 0.5f + 0.5f * sinf(runTime * 0.8f + 3.0f);   // Vert
-            materials[1].albedo.z = 0.5f + 0.5f * sinf(runTime * 0.6f + 5.0f);   // Bleu
-            
-            // Synchroniser la couleur de la lumière avec la sphère émissive
-            lightColor.x = materials[1].albedo.x;
-            lightColor.y = materials[1].albedo.y;
-            lightColor.z = materials[1].albedo.z;
-        }
+        // La sphère émissive garde sa couleur orange fixe : {1.0f, 0.5f, 0.0f}
+        // L'intensité de la lumière varie pour créer un effet vivant
+        //lightIntensity = 0.5f;
+        //std::cout << runTime << std::endl;
+        // La couleur de lumière reste orange en permanence
+        lightColor.x = 1.0f;  // Rouge fort
+        lightColor.y = 0.5f;  // Vert moyen  
+        lightColor.z = 0.0f;  // Pas de bleu = orange
         // Make light intensity oscillate between 0 and 2
         //lightIntensity = 1.0f + sinf(runTime * 1.5f);
         // Ajustement de l'intensité de la lumière
@@ -306,7 +350,92 @@ int main(void) {
         SetShaderValue(shader, viewEyeLoc, cameraPos, SHADER_UNIFORM_VEC3);
         SetShaderValue(shader, viewCenterLoc, cameraTarget, SHADER_UNIFORM_VEC3);
         SetShaderValue(shader, timeLoc, &runTime, SHADER_UNIFORM_FLOAT);
-        
+        // Animation de la sphère[0] pour simuler la chute puis la flottabilité sur l'eau
+        static float sphereVelocity = 0.0f;
+        static bool goingDown = true;
+        static bool hasHitWater = false;        // Pour savoir si la sphère a touché l'eau
+        static bool wavesTriggered = false;     // Pour activer les vagues une seule fois
+        static float bounceStartTime = -1.0f;   // Début des rebonds
+        static bool isFloating = false;         // Phase de flottaison
+
+        // Paramètres physiques
+        const float gravity = 10.0f;            // Gravité pour la chute libre
+        const float waterSurface = -0.8f;      // Surface de l'eau où la sphère flotte
+        const float waterBottom = -1.0f;       // Fond de l'eau
+        const float triggerY = -1.0f;          // Seuil pour déclencher les vagues
+        const float floatStrength = 3.0f;      // Force de flottaison
+        const float damping = 0.7f;            // Amortissement des rebonds
+        const float bounceDuration = 5.0f;     // Durée des rebonds de flottaison
+
+        // Vérifier si la sphère atteint le seuil de déclenchement des vagues
+        if (!wavesTriggered && spheres[0].position.y <= triggerY) {
+            wavesTriggered = true;
+            enableWaves = true;
+            waveStartTime = runTime;
+            waveCenter = (Vector3){spheres[0].position.x, -1.0f, spheres[0].position.z}; // Centre des vagues à la position de la sphère
+        }
+
+        // Phase 1: Chute libre jusqu'à la surface de l'eau
+        if (!hasHitWater) {
+            sphereVelocity += gravity * deltaTime;
+            spheres[0].position.y -= sphereVelocity * deltaTime *2.f;
+            
+            // Quand la sphère atteint la surface de l'eau
+            if (spheres[0].position.y <= waterSurface) {
+                hasHitWater = true;
+                isFloating = true;
+                bounceStartTime = runTime;
+                sphereVelocity = sphereVelocity * 0.5f; // Réduire la vitesse à l'impact
+                spheres[0].position.y = waterSurface;
+                goingDown = false; // Première remontée
+            }
+        }
+        // Phase 2: Rebonds de flottaison pendant 2 secondes
+        else if (isFloating && (runTime - bounceStartTime) < bounceDuration) {
+            // Calculer le temps écoulé et le facteur d'amortissement progressif
+            float elapsedBounceTime = runTime - bounceStartTime;
+            float dampingProgress = elapsedBounceTime / bounceDuration; // 0 à 1
+            float progressiveDamping = 1.0f - (dampingProgress * 0.8f); // Réduction progressive de 80%
+            
+            if (goingDown) {
+                // Descente avec résistance de l'eau
+                sphereVelocity += (gravity * 0.3f * progressiveDamping) * deltaTime;
+                spheres[0].position.y -= sphereVelocity * deltaTime * 2.f;
+
+                if (spheres[0].position.y <= waterBottom) {
+                    spheres[0].position.y = waterBottom;
+                    sphereVelocity = -sphereVelocity * damping * progressiveDamping;
+                    goingDown = false;
+                }
+            } else {
+                // Remontée par flottaison avec amortissement progressif
+                sphereVelocity += -floatStrength * 2.0f * progressiveDamping * deltaTime;
+                spheres[0].position.y -= sphereVelocity * deltaTime;
+
+                // Quand elle atteint la surface, appliquer un freinage fort
+                if (spheres[0].position.y >= waterSurface) {
+                    spheres[0].position.y = waterSurface;
+                    
+                    // Amortissement très fort près de la fin pour stabiliser à la surface
+                    float endDamping = damping * (0.3f + progressiveDamping * 0.2f); // Devient très faible
+                    sphereVelocity = -sphereVelocity * endDamping;
+                    
+                    // Si la vitesse est très faible, arrêter complètement
+                    if (abs(sphereVelocity) < 0.5f || dampingProgress > 0.8f) {
+                        sphereVelocity = 0.0f;
+                        // Forcer l'arrêt en passant à la phase 3
+                        isFloating = false; // Cela déclenche la phase 3 immédiatement
+                    } else {
+                        goingDown = true;
+                    }
+                }
+            }
+        }
+        // Phase 3: Arrêt des rebonds, sphère stabilisée à la surface
+        else if (isFloating) {
+            spheres[0].position.y = waterSurface;
+            sphereVelocity = 0.0f;
+        }
         // Envoi des données des sphères et des matériaux au shader
         // Note: Ces structures doivent être correctement alignées pour le GPU
         for (int i = 0; i < MAX_SPHERES; i++) {
@@ -374,6 +503,14 @@ int main(void) {
         SetShaderValue(shader, beamAngleLoc, &beamAngle, SHADER_UNIFORM_FLOAT);
         SetShaderValue(shader, beamIntensityLoc, &beamIntensity, SHADER_UNIFORM_FLOAT);
         SetShaderValue(shader, enableBeamLoc, &enableBeam, SHADER_UNIFORM_INT);
+        
+        // Mise à jour des paramètres des vagues
+        SetShaderValue(shader, waveCenterLoc, &waveCenter, SHADER_UNIFORM_VEC3);
+        SetShaderValue(shader, enableWavesLoc, &enableWaves, SHADER_UNIFORM_INT);
+        SetShaderValue(shader, waveDurationLoc, &waveDuration, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, waveAmplitudeLoc, &waveAmplitude, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, waveStartTimeLoc, &waveStartTime, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, waveDecayRateLoc, &waveDecayRate, SHADER_UNIFORM_FLOAT);
         
         //liaison entre les textures et les shaders
         SetShaderValueTexture(denoise_shader, GetShaderLocation(denoise_shader, "renderNoisy"), renderNoisy.texture);
@@ -505,12 +642,33 @@ BeginDrawing();
     DrawText(TextFormat("Light Intensity: %.1f", lightIntensity), 10, 30, 20, WHITE);
     DrawText(TextFormat("Beam: %s | Angle: %.2f | Intensity: %.1f", 
              enableBeam ? "ON" : "OFF", beamAngle, beamIntensity), 10, 50, 20, WHITE);
-    DrawText("Controls:", 10, GetScreenHeight() - 130, 20, WHITE);
-    DrawText("  Mouse Right - Rotate camera", 10, GetScreenHeight() - 110, 20, WHITE);
-    DrawText("  Mouse Wheel - Zoom in/out", 10, GetScreenHeight() - 90, 20, WHITE);
-    DrawText("  H/K/U/J/Y/I - Move light", 10, GetScreenHeight() - 70, 20, WHITE);
-    DrawText("  B - Toggle beam | Q/E - Beam angle | T/G - Beam intensity", 10, GetScreenHeight() - 50, 20, WHITE);
-    DrawText("  Shift + WASD/ZX - Beam direction", 10, GetScreenHeight() - 30, 20, WHITE);
+    DrawText(TextFormat("Waves: %s | Amp: %.2f | Dur: %.1fs | Decay: %.0f%%", 
+             enableWaves ? "ON" : "OFF", waveAmplitude, waveDuration, waveDecayRate * 100), 10, 70, 20, WHITE);
+    
+    // Calculer le temps restant pour les vagues
+    float elapsedTime = runTime - waveStartTime;
+    float timeLeft = waveDuration - elapsedTime;
+    if (enableWaves && timeLeft > 0) {
+        DrawText(TextFormat("Wave time left: %.1fs", timeLeft), 10, 90, 20, WHITE);
+    } else if (enableWaves && elapsedTime > waveDuration) {
+        float fadeTime = 2.0f;
+        float fadeLeft = fadeTime - (elapsedTime - waveDuration);
+        if (fadeLeft > 0) {
+            DrawText(TextFormat("Fading out: %.1fs", fadeLeft), 10, 90, 20, YELLOW);
+        } else {
+            DrawText("Waves stopped", 10, 90, 20, GRAY);
+        }
+    }
+    
+    DrawText("Controls:", 10, GetScreenHeight() - 170, 20, WHITE);
+    DrawText("  Mouse Right - Rotate camera", 10, GetScreenHeight() - 150, 20, WHITE);
+    DrawText("  Mouse Wheel - Zoom in/out", 10, GetScreenHeight() - 130, 20, WHITE);
+    DrawText("  H/K/U/J/Y/I - Move light", 10, GetScreenHeight() - 110, 20, WHITE);
+    DrawText("  B - Toggle beam | Q/E - Beam angle | T/G - Beam intensity", 10, GetScreenHeight() - 90, 20, WHITE);
+    DrawText("  V - Toggle waves | R - Restart waves | Ctrl + WASD - Move center", 10, GetScreenHeight() - 70, 20, WHITE);
+    DrawText("  Alt + Up/Down - Wave amplitude | Alt + Left/Right - Duration", 10, GetScreenHeight() - 50, 20, WHITE);
+    DrawText("  Right Alt + Up/Down - Decay rate (persistence)", 10, GetScreenHeight() - 30, 20, WHITE);
+    DrawText("  Shift + WASD/ZX - Beam direction", 10, GetScreenHeight() - 10, 20, WHITE);
 EndDrawing();
 
         frameCounter++;

@@ -12,6 +12,7 @@
 #define MAT_EMISSIVE 3
 #define MAT_MIRROR 4
 #define MAT_ZONE_EMISSION 5
+#define MAT_EAU 6
 
 
 // Structure pour les matériaux, alignée sur vec4 pour la compatibilité avec des uniformes
@@ -51,42 +52,19 @@ uniform vec3 viewEye;
 uniform vec3 viewCenter;
 uniform float time;     // Pour le bruit
 
-// Nouvelles variables pour le faisceau lumineux
-uniform vec3 beamPosition;   // Position du faisceau (indépendante de lightPos)
-uniform vec3 beamDirection;  // Direction du faisceau
-uniform vec3 beamColor;      // Couleur du faisceau
-uniform float beamAngle;     // Angle du cône (en radians)
-uniform float beamIntensity; // Intensité du faisceau
-uniform bool enableBeam;     // Activer/désactiver le faisceau
+// Uniformes pour les vagues circulaires
+uniform vec3 waveCenter;    // Centre des ondulations
+uniform int enableWaves;    // Activer/désactiver les vagues
+uniform float waveDuration; // Durée des vagues (en secondes)
+uniform float waveAmplitude; // Amplitude des vagues
+uniform float waveStartTime; // Moment où les vagues ont commencé
+uniform float waveDecayRate; // Taux de dissipation par seconde
 
 uniform sampler2D previousFrame;
 uniform float frameBlend; // 0.1 to 0.2 works well
 
 
 out vec4 finalColor;
-
-// Fonction pour calculer l'intensité du faisceau laser (faisceau fin, pas de cône)
-float calculateBeamIntensity(vec3 point) {
-    if (!enableBeam) return 0.0;
-
-    // Calculer la distance du point à l'axe du laser (ligne passant par beamPosition dans beamDirection)
-    vec3 toPoint = point - beamPosition;
-    float t = dot(toPoint, normalize(beamDirection));
-    vec3 closestPoint = beamPosition + normalize(beamDirection) * t;
-    float distToAxis = length(point - closestPoint);
-
-    // Largeur du laser (ajustez ce paramètre pour l'épaisseur du rayon)
-    float laserRadius = 0.5;
-
-    // Profil gaussien pour un laser fin
-    float intensity = exp(-pow(distToAxis / laserRadius, 2.0) * 4.0);
-
-    // Atténuation avec la distance (optionnel, pour éviter un laser infini)
-    float distance = max(0.01, t);
-    float distanceFalloff = beamIntensity / (1.0 + 0.1 * distance + 0.01 * distance * distance);
-
-    return intensity * distanceFalloff;
-}
 
 // Hash function pour générer des nombres pseudo-aléatoires
 uint hash(uint x) {
@@ -218,7 +196,95 @@ bool intersectSphere(vec3 ro, vec3 rd, vec4 sphere, out float t, out vec3 n) {
     return true;
 }
 
-// Fonction d'intersection pour les boîtes alignées sur les axes (AABB)
+// Fonction pour calculer la hauteur des vagues circulaires
+float calculateWaveHeight(vec3 pos, vec3 waveCenter, float time) {
+    float distance = length(pos.xz - waveCenter.xz);
+    float waveSpeed = 2.0;  // Vitesse de propagation des ondes
+    float waveFreq = 3.0;   // Fréquence des ondulations
+    
+    // Calcul du temps écoulé depuis le début des vagues
+    float elapsedTime = time - waveStartTime;
+    
+    // Atténuation temporelle progressive utilisant le paramètre waveDecayRate
+    float timeAttenuation = 1.0;
+    if (elapsedTime > waveDuration) {
+        // Après la durée active, on laisse les vagues existantes se dissiper naturellement
+        // mais on n'en génère plus de nouvelles
+        
+        // Calculer à quelle distance cette onde a été générée
+        float waveAge = (distance / waveSpeed); // Temps qu'il a fallu à cette onde pour arriver ici
+        float waveGenerationTime = elapsedTime - waveAge; // Moment où cette onde a été générée
+        
+        // Si cette onde a été générée après waveDuration, elle n'existe pas
+        if (waveGenerationTime > waveDuration) {
+            return 0.0; // Pas de nouvelles vagues après le temps imparti
+        }
+        
+        // Sinon, cette onde existe mais se dissipe progressivement
+        float overtimeSeconds = elapsedTime - waveDuration;
+        timeAttenuation = pow(waveDecayRate, overtimeSeconds);
+    } else if (elapsedTime < 0.0) {
+        // Si les vagues n'ont pas encore commencé
+        timeAttenuation = 0.0;
+    } else {
+        // Pendant la durée active, réduction légère pour effet naturel
+        float naturalDecay = mix(0.98, 1.0, waveDecayRate); // Plus le decay est fort, plus la réduction naturelle est faible
+        timeAttenuation = pow(naturalDecay, elapsedTime);
+    }
+    
+    // Atténuation avec la distance (plus progressive)
+    float distanceAttenuation = exp(-distance * 0.15); // Réduit le coefficient pour une portée plus longue
+    
+    // Atténuation supplémentaire pour les vagues très éloignées (après 10 unités)
+    float farDistanceAttenuation = 1.0;
+    if (distance > 10.0) {
+        float excessDistance = distance - 10.0;
+        farDistanceAttenuation = exp(-excessDistance * 0.5); // Atténuation rapide au-delà de 10 unités
+    }
+    
+    // Vérifier si l'onde a eu le temps d'atteindre cette distance
+    float timeToReachDistance = distance / waveSpeed;
+    if (elapsedTime < timeToReachDistance) {
+        return 0.0; // L'onde n'est pas encore arrivée à cette distance
+    }
+    
+    // Atténuation temporelle des ondulations individuelles (vagues vieillissent)
+    float waveAge = elapsedTime - timeToReachDistance; // Temps depuis que l'onde est arrivée ici
+    float ageAttenuation = exp(-waveAge * 0.1); // Les vagues s'affaiblissent en vieillissant
+    
+    // Onde circulaire qui se propage avec toutes les attenuations
+    // Utiliser elapsedTime au lieu de time pour que les vagues partent du centre
+    float wave = sin(waveFreq * distance - waveSpeed * (waveStartTime + elapsedTime)) 
+                 * distanceAttenuation 
+                 * farDistanceAttenuation
+                 * timeAttenuation 
+                 * ageAttenuation;
+    
+    // Amplitude finale avec réduction progressive globale
+    float finalAmplitude = waveAmplitude * timeAttenuation;
+    
+    return wave * finalAmplitude;
+}
+
+// Fonction pour calculer la normale déformée par les vagues
+vec3 calculateWaveNormal(vec3 pos, vec3 waveCenter, float time) {
+    float eps = 0.01;
+    
+    // Échantillonner la hauteur en 4 points autour de la position
+    float h0 = calculateWaveHeight(pos, waveCenter, time);
+    float hx = calculateWaveHeight(pos + vec3(eps, 0, 0), waveCenter, time);
+    float hz = calculateWaveHeight(pos + vec3(0, 0, eps), waveCenter, time);
+    
+    // Calculer le gradient (dérivées partielles)
+    vec3 tangentX = vec3(eps, hx - h0, 0);
+    vec3 tangentZ = vec3(0, hz - h0, eps);
+    
+    // Normale = produit vectoriel des tangentes
+    vec3 normal = normalize(cross(tangentX, tangentZ));
+    return normal;
+}
+
+// Fonction d'intersection pour les boîtes alignées sur les axes (AABB) avec vagues
 bool intersectBox(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax, out float t, out vec3 n) {
     vec3 invDir = 1.0 / rd;
     vec3 t0s = (boxMin - ro) * invDir;
@@ -235,18 +301,53 @@ bool intersectBox(vec3 ro, vec3 rd, vec3 boxMin, vec3 boxMax, out float t, out v
     t = tmin > 0.001 ? tmin : tmax;
     if (t < 0.001) return false;
     
-    // Calculer la normale
+    // Point d'intersection initial
     vec3 hit = ro + rd * t;
     vec3 center = (boxMin + boxMax) * 0.5;
     vec3 d = abs(hit - center) - (boxMax - boxMin) * 0.5;
     
-    // Trouver la face la plus proche
-    if (d.x > d.y && d.x > d.z) {
-        n = vec3(sign(hit.x - center.x), 0.0, 0.0);
-    } else if (d.y > d.z) {
-        n = vec3(0.0, sign(hit.y - center.y), 0.0);
+    // Vérifier si on touche la surface supérieure (eau) ET si les vagues sont activées
+    bool isTopSurface = (d.y > d.x && d.y > d.z && hit.y > center.y);
+    
+    if (isTopSurface && enableWaves == 1) {
+        // Utiliser le centre des ondulations défini par l'uniform
+        vec3 waveCenterPos = waveCenter;
+        
+        // Itération pour trouver l'intersection précise avec la surface déformée
+        float rayT = t;
+        for (int iter = 0; iter < 8; iter++) {
+            vec3 currentPos = ro + rd * rayT;
+            
+            // Hauteur de la vague à cette position
+            float waveHeight = calculateWaveHeight(currentPos, waveCenterPos, time);
+            
+            // Surface déformée
+            float surfaceY = boxMax.y + waveHeight;
+            
+            // Erreur entre la position du rayon et la surface
+            float error = currentPos.y - surfaceY;
+            
+            // Ajuster t pour converger vers la surface
+            rayT -= error / rd.y;
+            
+            // Convergence suffisante
+            if (abs(error) < 0.001) break;
+        }
+        
+        t = rayT;
+        hit = ro + rd * t;
+        
+        // Calculer la normale déformée par les vagues
+        n = calculateWaveNormal(hit, waveCenterPos, time);
     } else {
-        n = vec3(0.0, 0.0, sign(hit.z - center.z));
+        // Faces normales (non déformées)
+        if (d.x > d.y && d.x > d.z) {
+            n = vec3(sign(hit.x - center.x), 0.0, 0.0);
+        } else if (d.y > d.z) {
+            n = vec3(0.0, sign(hit.y - center.y), 0.0);
+        } else {
+            n = vec3(0.0, 0.0, sign(hit.z - center.z));
+        }
     }
     
     return true;
@@ -283,7 +384,7 @@ vec3 directLight(vec3 p, vec3 n, vec3 viewDir, int matType, vec3 albedo, float r
     float distToLight = length(lightPos - p);
     
     // Calculer l'intensité du faisceau pour ce point
-    float beamIntensity = calculateBeamIntensity(p);
+    //float beamIntensity = calculateBeamIntensity(p);
     
     // Vérifier si le point est dans l'ombre
     bool occluded = false;
@@ -323,7 +424,7 @@ vec3 directLight(vec3 p, vec3 n, vec3 viewDir, int matType, vec3 albedo, float r
     float attenuation = lightIntensity / (1.0 + 0.1 * distToLight + 0.01 * distToLight * distToLight); //bloque la lumière à 2
     
     // Ajouter l'intensité du faisceau
-    attenuation += beamIntensity;
+    //attenuation += beamIntensity;
     
     // Différents modèles d'éclairage en fonction du matériau
     vec3 lightContrib = vec3(0.0);
@@ -447,6 +548,22 @@ vec3 sampleDirectLight(vec3 p, vec3 n, vec3 viewDir, Material mat, float seed) {
                         brdf = vec3(0.0); // Pas de contribution si pas d'alignement parfait
                     }
                 }
+                else if (mat.type == MAT_EAU) {
+                    // Pour l'eau calme, comportement similaire au miroir avec teinte d'eau
+                    vec3 reflectDir = reflect(-viewDir, n);
+                    vec3 toReflectedLight = normalize(lightPos - p);
+                    
+                    float alignment = dot(normalize(reflectDir), toReflectedLight);
+                    float threshold = 0.995; // Légèrement moins strict que le miroir
+                    
+                    if (alignment > threshold) {
+                        float cosTheta = max(0.0, dot(n, toReflectedLight));
+                        // Teinte bleu-vert de l'eau sur la réflexion
+                        brdf = vec3(0.8, 0.9, 1.0) / max(cosTheta, 0.001);
+                    } else {
+                        brdf = vec3(0.0);
+                    }
+                }
                 // Calcul du PDF
                 float distance2 = dot(lightPos - p, lightPos - p);
                 float cosTheta = max(dot(toLight, -normalize(sampleOffset)), 0.0);
@@ -550,54 +667,56 @@ vec3 trace(vec3 ro, vec3 rd, float seed) {
         // Si pas d'intersection, ajouter un fond dégradé et sortir
         if (hitIdx == -1) {
             // Effet volumétrique du faisceau dans l'air
-            if (enableBeam) {
-                // Échantillonner plusieurs points le long du rayon pour l'effet volumétrique
-                float stepSize = 0.5;
-                int numSteps = int(20.0 / stepSize);
-                vec3 volumetricContrib = vec3(0.0);
-                
-                for (int i = 0; i < numSteps; ++i) {
-                    float t = float(i) * stepSize;
-                    vec3 samplePoint = ro + rd * t;
-                    float beamContrib = calculateBeamIntensity(samplePoint);
-                    
-                    if (beamContrib > 0.0) {
-                        // Simuler la diffusion atmosphérique
-                        float scattering = 0.01; // Coefficient de diffusion
-                        volumetricContrib += beamColor * beamContrib * scattering * stepSize;
-                    }
-                }                
-                col += throughput * volumetricContrib;
-            }
+            //if (enableBeam) {
+            //    // Échantillonner plusieurs points le long du rayon pour l'effet volumétrique
+            //    float stepSize = 0.5;
+            //    int numSteps = int(20.0 / stepSize);
+            //    vec3 volumetricContrib = vec3(0.0);
+            //    
+            //    for (int i = 0; i < numSteps; ++i) {
+            //        float t = float(i) * stepSize;
+            //        vec3 samplePoint = ro + rd * t;
+            //        float beamContrib = calculateBeamIntensity(samplePoint);
+            //        
+            //        if (beamContrib > 0.0) {
+            //            // Simuler la diffusion atmosphérique
+            //            float scattering = 0.01; // Coefficient de diffusion
+            //            volumetricContrib += beamColor * beamContrib * scattering * stepSize;
+            //        }
+            //    }                
+            //    col += throughput * volumetricContrib;
+            //}
             
-            //// Ciel dégradé simple
-            //float t = 0.5 * (rd.y + 1.0);
-            //vec3 skyColor = mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
-            //col += throughput * skyColor * 0.3;
+            // Ciel dégradé personnalisé : bleu foncé en haut, beige vers l'horizon
+            float t = clamp(0.7 * (rd.y + 1.0), 0.0, 1.0);
+            vec3 skyTop = vec3(0.133, 0.255, 0.502);      // Bleu foncé
+            vec3 skyHorizon = vec3(1, 0.788, 0.592);  // Beige clair
+            vec3 skyColor = mix(skyHorizon, skyTop, t);
+            col += throughput * skyColor * 0.35;
             break;
         }
 
         // Après avoir trouvé l'intersection:
         Material mat;
         if (hitType == 1) {
-    vec3 halfSize = blockSizes[hitIdx] * 0.5;
-    vec3 blockMin = blocks[hitIdx] - halfSize;
-    vec3 blockMax = blocks[hitIdx] + halfSize;
+            vec3 halfSize = blockSizes[hitIdx] * 0.5;
+            vec3 blockMin = blocks[hitIdx] - halfSize;
+            vec3 blockMax = blocks[hitIdx] + halfSize;
 
-    Material matBase = materials_block[hitIdx];
-    //verif que le mur est de type 5 MAT_ZONE_EMISSION
-    if (matBase.type == MAT_ZONE_EMISSION) {
-        
-        float emissionFactor = emissionPattern(hit, blockMin, blockMax, time);
-        if (emissionFactor > 0.0) {
-            matBase.type = MAT_EMISSIVE;
-            matBase.albedo = vec3(1.0);  // ou couleur désirée
-        }
-        mat = matBase;
-    }
-} else {
-    mat = materials[hitIdx];
-}        
+            Material matBase = materials_block[hitIdx];
+            //verif que le mur est de type 5 MAT_ZONE_EMISSION
+            if (matBase.type == MAT_ZONE_EMISSION) {
+                float emissionFactor = emissionPattern(hit, blockMin, blockMax, time);
+                if (emissionFactor > 0.0) {
+                    matBase.type = MAT_EMISSIVE;
+                    matBase.albedo = vec3(1.0);  // ou couleur désirée
+                }
+                // Sinon garder le matériau de base (MAT_ZONE_EMISSION se comporte comme le matériau sous-jacent)
+            }
+            mat = matBase;
+        } else {
+            mat = materials[hitIdx];
+        }        
         // Si on touche une source émissive, ajouter sa contribution et terminer
         if (mat.type == MAT_EMISSIVE) {
             col += throughput * mat.albedo * lightIntensity;
@@ -668,6 +787,37 @@ vec3 trace(vec3 ro, vec3 rd, float seed) {
             }
             ro = hit + n * 0.001;
             throughput *= mat.albedo;
+        }
+        else if (mat.type == MAT_EAU) {
+            // Eau calme: réflexion parfaite comme un miroir avec légère teinte d'eau
+            float cosI = abs(dot(-rd, n));
+            
+            // Effet Fresnel pour eau calme (plus de réflexion à angle rasant)
+            float r0 = 0.02; // Réflectivité de l'eau à incidence normale (2%)
+            float fresnel = r0 + (1.0 - r0) * pow(1.0 - cosI, 5.0);
+            
+            // Pour eau calme, on privilégie la réflexion (90% du temps)
+            if (random(hit, seed + float(bounce) * 1.41421) < 0.9) {
+                // Réflexion parfaite (eau calme = miroir parfait)
+                rd = reflect(rd, n);
+                ro = hit + n * 0.001;
+                // Légère teinte bleu-vert de l'eau sur la réflexion
+                throughput *= mix(vec3(0.8, 0.9, 1.0), vec3(1.0), fresnel);
+            } else {
+                // Rare réfraction pour effet réaliste
+                float eta = 1.0 / 1.33; // Air vers eau
+                vec3 refracted = refract(rd, n, eta);
+                if (length(refracted) > 0.0) {
+                    rd = normalize(refracted);
+                    ro = hit - n * 0.001; // Entrer dans l'eau
+                    throughput *= mat.albedo * 0.8; // Absorption légère
+                } else {
+                    // Réflexion totale si réfraction impossible
+                    rd = reflect(rd, n);
+                    ro = hit + n * 0.001;
+                    throughput *= vec3(0.9, 0.95, 1.0);
+                }
+            }
         }
         
 
